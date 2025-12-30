@@ -1,0 +1,33 @@
+{
+  "users": [
+    {
+      "id": "1",
+      "username": "demo_user",
+      "email": "demo@example.com",
+      "password": "demo123"
+    }
+  ],
+  "notes": [
+    {
+      "id": "1",
+      "userId": "1",
+      "title": "Chào mừng đến với Weather Notes!",
+      "content": "Đây là ứng dụng ghi chú kết hợp với thời tiết. Bạn có thể tạo, chỉnh sửa và xóa các ghi chú của mình tại đây.",
+      "color": "#e97a55",
+      "type": "all",
+      "createdAt": "2025-12-20T10:00:00.000Z",
+      "updatedAt": "2025-12-20T10:00:00.000Z"
+    },
+    {
+      "id": "2",
+      "userId": "1",
+      "title": "Ghi chú quan trọng",
+      "content": "Đây là một ghi chú quan trọng. Bạn có thể thay đổi màu sắc và loại ghi chú tùy ý.",
+      "color": "#f6d34f",
+      "type": "Important",
+      "createdAt": "2025-12-20T11:00:00.000Z",
+      "updatedAt": "2025-12-20T11:00:00.000Z"
+    }
+  ],
+  "currentUser": null
+}
