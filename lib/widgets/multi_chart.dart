@@ -16,6 +16,25 @@ class MultiChart extends StatelessWidget {
     this.visibleCharts = const [ChartType.temperature, ChartType.precipitation, ChartType.wind],
   });
 
+  // ✅ Chỉ hiển thị các giờ này trên trục X
+  static const Set<int> _shownHours = {0, 3, 6, 9, 12, 15, 18, 21};
+
+  // ✅ Lấy index ĐẦU TIÊN ứng với mỗi hour trong data (tránh trùng lặp nếu data có nhiều điểm/giờ)
+  Set<int> _labelIndicesForShownHours() {
+    final firstIndexByHour = <int, int>{};
+    for (int i = 0; i < hourlyData.length; i++) {
+      final t = hourlyData[i].time;
+      firstIndexByHour.putIfAbsent(t.hour, () => i);
+    }
+
+    final indices = <int>{};
+    for (final h in _shownHours) {
+      final idx = firstIndexByHour[h];
+      if (idx != null) indices.add(idx);
+    }
+    return indices;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (hourlyData.isEmpty) {
@@ -44,6 +63,8 @@ class MultiChart extends StatelessWidget {
 
     final minY = temps.reduce((a, b) => a < b ? a : b) - 2;
     final maxY = temps.reduce((a, b) => a > b ? a : b) + 2;
+
+    final shownIndices = _labelIndicesForShownHours();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -87,23 +108,37 @@ class MultiChart extends StatelessWidget {
                     ),
                   ),
                 ),
+
+                // ✅ FIX: chỉ hiện 00,03,06,09,12,15,18,21
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 30,
-                    interval: hourlyData.length > 12 ? 3 : 1,
+                    interval: 1, // kiểm soát bằng điều kiện, không dựa vào interval nữa
                     getTitlesWidget: (value, meta) {
-                      final index = value.toInt();
-                      if (index >= 0 && index < hourlyData.length) {
-                        return Text(
-                          DateHelper.hm.format(hourlyData[index].time),
+                      final index = value.round();
+                      if (index < 0 || index >= hourlyData.length) return const SizedBox.shrink();
+
+                      // chỉ hiện tại index thuộc tập shownIndices
+                      if (!shownIndices.contains(index)) return const SizedBox.shrink();
+
+                      final time = hourlyData[index].time;
+                      // nếu data không đúng mốc phút 0 thì bỏ để tránh bị lệch (tuỳ bạn)
+                      // if (time.minute != 0) return const SizedBox.shrink();
+
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          DateHelper.hm.format(time),
                           style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 9),
-                        );
-                      }
-                      return const Text('');
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                        ),
+                      );
                     },
                   ),
                 ),
+
                 rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               ),
@@ -165,27 +200,22 @@ class MultiChart extends StatelessWidget {
     }
 
     final maxY = precip.reduce((a, b) => a > b ? a : b) + 1;
-    
-    // Tính interval cho trục Y - đảm bảo có đủ khoảng cách giữa các nhãn
-    // Chiều cao biểu đồ: 100px, mỗi nhãn cần tối thiểu 25px để không đè
-    // Tối đa 3-4 nhãn để đảm bảo khoảng cách đủ rộng
+
     double yInterval;
     if (maxY <= 0.2) {
-      yInterval = 0.1; // 0, 0.1, 0.2
+      yInterval = 0.1;
     } else if (maxY <= 0.5) {
-      yInterval = 0.2; // 0, 0.2, 0.4
+      yInterval = 0.2;
     } else if (maxY <= 1.0) {
-      yInterval = 0.3; // 0, 0.3, 0.6, 0.9
+      yInterval = 0.3;
     } else if (maxY <= 2.0) {
-      yInterval = 0.5; // 0, 0.5, 1.0, 1.5, 2.0
+      yInterval = 0.5;
     } else if (maxY <= 5.0) {
-      yInterval = 1.0; // 0, 1, 2, 3, 4, 5
+      yInterval = 1.0;
     } else if (maxY <= 10.0) {
-      yInterval = 2.0; // 0, 2, 4, 6, 8, 10
+      yInterval = 2.0;
     } else {
-      // Cho giá trị lớn, chia thành tối đa 4 mức
       yInterval = (maxY / 4).ceilToDouble();
-      // Làm tròn lên số đẹp (5, 10, 20, 50...)
       if (yInterval <= 5) {
         yInterval = 5;
       } else if (yInterval <= 10) {
@@ -197,34 +227,8 @@ class MultiChart extends StatelessWidget {
       }
     }
 
-    // Tìm các index chính xác của các mốc giờ chính (0h, 6h, 12h, 18h)
-    // Chỉ lấy điểm ĐẦU TIÊN của mỗi giờ chính để tránh trùng lặp
-    final mainHourIndices = <int>{};
-    final seenHours = <int>{};
-    for (int i = 0; i < hourlyData.length; i++) {
-      final time = hourlyData[i].time;
-      final hour = time.hour;
-      // Chỉ lấy điểm có giờ chính và phút = 0
-      if ((hour == 0 || hour == 6 || hour == 12 || hour == 18) && 
-          time.minute == 0 && 
-          !seenHours.contains(hour)) {
-        mainHourIndices.add(i);
-        seenHours.add(hour);
-      }
-    }
-    
-    // Tính interval cho trục X dựa trên số lượng dữ liệu
-    // Mục tiêu: hiển thị 4 mốc giờ chính (0h, 6h, 12h, 18h)
-    double xInterval;
-    if (hourlyData.length <= 12) {
-      xInterval = 3; // Hiển thị mỗi 3 giờ
-    } else if (hourlyData.length <= 24) {
-      xInterval = 6; // Hiển thị mỗi 6 giờ (0h, 6h, 12h, 18h)
-    } else if (hourlyData.length <= 48) {
-      xInterval = 12; // Hiển thị mỗi 12 giờ
-    } else {
-      xInterval = hourlyData.length / 4; // Chia thành 4 mốc
-    }
+    // ✅ dùng chung logic hiển thị giờ như chart khác
+    final shownIndices = _labelIndicesForShownHours();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -264,17 +268,12 @@ class MultiChart extends StatelessWidget {
                     reservedSize: 50,
                     interval: yInterval,
                     getTitlesWidget: (value, meta) {
-                      // Chỉ hiển thị nhãn nếu giá trị >= 0 và <= maxY
-                      if (value < 0 || value > maxY) {
-                        return const Text('');
-                      }
-                      
-                      // Format số ngắn gọn, tránh số thập phân không cần thiết
+                      if (value < 0 || value > maxY) return const Text('');
+
                       String text;
                       if (value < 0.05) {
                         text = '0';
                       } else if (value < 1) {
-                        // Làm tròn đến 1 chữ số thập phân, loại bỏ số 0 cuối
                         final rounded = (value * 10).round() / 10;
                         if (rounded == rounded.roundToDouble()) {
                           text = rounded.toInt().toString();
@@ -284,7 +283,7 @@ class MultiChart extends StatelessWidget {
                       } else {
                         text = value.toInt().toString();
                       }
-                      
+
                       return Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: Text(
@@ -292,7 +291,7 @@ class MultiChart extends StatelessWidget {
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.6),
                             fontSize: 10,
-                            height: 1.2, // Giảm line height để tiết kiệm không gian
+                            height: 1.2,
                           ),
                           textAlign: TextAlign.right,
                           maxLines: 1,
@@ -302,39 +301,33 @@ class MultiChart extends StatelessWidget {
                     },
                   ),
                 ),
+
+                // ✅ FIX: chỉ hiện 00,03,06,09,12,15,18,21
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 30,
-                    interval: xInterval,
+                    interval: 1,
                     getTitlesWidget: (value, meta) {
-                      // Chỉ xử lý nếu value là số nguyên (hoặc gần số nguyên)
-                      // Tránh xử lý các giá trị float không chính xác
                       final index = value.round();
-                      
-                      // CHỈ hiển thị nếu:
-                      // 1. index hợp lệ (>= 0 và < length)
-                      // 2. index nằm trong danh sách các mốc giờ chính đã tìm được
-                      // 3. value gần với index (tránh trường hợp float không chính xác)
-                      if (index >= 0 && 
-                          index < hourlyData.length && 
-                          mainHourIndices.contains(index) &&
-                          (value - index).abs() < 0.5) {
-                        final time = hourlyData[index].time;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            DateHelper.hm.format(time),
-                            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 9),
-                            maxLines: 1,
-                            overflow: TextOverflow.visible,
-                          ),
-                        );
-                      }
-                      return const Text('');
+
+                      if (index < 0 || index >= hourlyData.length) return const SizedBox.shrink();
+                      if (!shownIndices.contains(index)) return const SizedBox.shrink();
+
+                      final time = hourlyData[index].time;
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          DateHelper.hm.format(time),
+                          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 9),
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                        ),
+                      );
                     },
                   ),
                 ),
+
                 rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               ),
@@ -353,15 +346,10 @@ class MultiChart extends StatelessWidget {
                     if (index >= 0 && index < hourlyData.length) {
                       final time = hourlyData[index].time;
                       final value = rod.toY;
-                      // Format giá trị mưa
-                      final valueText = value < 0.1 
-                          ? '0.0' 
-                          : (value < 1 
-                              ? value.toStringAsFixed(2) 
-                              : value.toStringAsFixed(1));
+                      final valueText = value < 0.1 ? '0.0' : (value < 1 ? value.toStringAsFixed(2) : value.toStringAsFixed(1));
                       return BarTooltipItem(
                         '${DateHelper.hm.format(time)}\n$valueText mm/h',
-                        TextStyle(
+                        const TextStyle(
                           color: Colors.white,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -394,6 +382,8 @@ class MultiChart extends StatelessWidget {
     }
 
     final maxY = winds.isEmpty ? 10.0 : winds.reduce((a, b) => a > b ? a : b) + 2;
+
+    final shownIndices = _labelIndicesForShownHours();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,23 +426,32 @@ class MultiChart extends StatelessWidget {
                     ),
                   ),
                 ),
+
+                // ✅ FIX: chỉ hiện 00,03,06,09,12,15,18,21
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 30,
-                    interval: hourlyData.length > 12 ? 3 : 1,
+                    interval: 1,
                     getTitlesWidget: (value, meta) {
-                      final index = value.toInt();
-                      if (index >= 0 && index < hourlyData.length) {
-                        return Text(
-                          DateHelper.hm.format(hourlyData[index].time),
+                      final index = value.round();
+                      if (index < 0 || index >= hourlyData.length) return const SizedBox.shrink();
+                      if (!shownIndices.contains(index)) return const SizedBox.shrink();
+
+                      final time = hourlyData[index].time;
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          DateHelper.hm.format(time),
                           style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 9),
-                        );
-                      }
-                      return const Text('');
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                        ),
+                      );
                     },
                   ),
                 ),
+
                 rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               ),
@@ -475,4 +474,3 @@ class MultiChart extends StatelessWidget {
     );
   }
 }
-
